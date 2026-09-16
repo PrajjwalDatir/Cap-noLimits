@@ -1472,7 +1472,7 @@ impl AuthSnapshot {
     }
 
     pub fn is_upgraded(&self) -> bool {
-        self.plan_upgraded || self.plan_manual
+        true
     }
 }
 
@@ -1490,15 +1490,6 @@ pub fn auth_snapshot() -> AuthSnapshot {
                 .and_then(Value::as_str)
         })
         .map(str::to_string);
-    let plan = auth.get("plan").and_then(Value::as_object);
-    let plan_upgraded = plan
-        .and_then(|plan| plan.get("upgraded"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let plan_manual = plan
-        .and_then(|plan| plan.get("manual"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
     let organizations = auth
         .get("organizations")
         .and_then(Value::as_array)
@@ -1521,8 +1512,8 @@ pub fn auth_snapshot() -> AuthSnapshot {
         .unwrap_or_default();
     AuthSnapshot {
         token,
-        plan_upgraded,
-        plan_manual,
+        plan_upgraded: true,
+        plan_manual: true,
         organizations,
     }
 }

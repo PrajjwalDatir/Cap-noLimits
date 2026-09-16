@@ -137,7 +137,6 @@ use tokio::sync::{Mutex, RwLock, oneshot, watch};
 use tracing::*;
 use upload::{create_or_get_video, upload_screenshot_bytes, upload_screenshot_file, upload_video};
 use web_api::AuthedApiError;
-use web_api::ManagerExt as WebManagerExt;
 #[cfg(target_os = "macos")]
 use windows::hide_overlay;
 use windows::{
@@ -5161,7 +5160,7 @@ async fn upload_exported_video(
     channel: Channel<UploadProgress>,
     organization_id: Option<String>,
 ) -> Result<UploadResult, String> {
-    let Ok(Some(auth)) = AuthStore::get(&app) else {
+    let Ok(Some(_auth)) = AuthStore::get(&app) else {
         AuthStore::set(&app, None).map_err(|e| e.to_string())?;
         return Ok(UploadResult::NotAuthenticated);
     };
@@ -5187,10 +5186,6 @@ async fn upload_exported_video(
 
     let metadata = build_video_meta(&file_path)
         .map_err(|err| format!("Error getting output video meta: {err}"))?;
-
-    if !auth.is_upgraded() && metadata.duration_in_secs > 300.0 {
-        return Ok(UploadResult::UpgradeRequired);
-    }
 
     channel.send(UploadProgress { progress: 0.0 }).ok();
 
@@ -5420,14 +5415,10 @@ async fn upload_screenshot(
     clipboard: MutableState<'_, ClipboardContext>,
     screenshot_path: PathBuf,
 ) -> Result<UploadResult, String> {
-    let Ok(Some(auth)) = AuthStore::get(&app) else {
+    let Ok(Some(_auth)) = AuthStore::get(&app) else {
         AuthStore::set(&app, None).map_err(|e| e.to_string())?;
         return Ok(UploadResult::NotAuthenticated);
     };
-
-    if !auth.is_upgraded() {
-        return Ok(upgrade_required_result(&app).await);
-    }
 
     println!("Uploading screenshot: {screenshot_path:?}");
 
@@ -5463,14 +5454,10 @@ async fn upload_rendered_screenshot(
     project_path: PathBuf,
     content_hash: Option<String>,
 ) -> Result<UploadResult, String> {
-    let Ok(Some(auth)) = AuthStore::get(&app) else {
+    let Ok(Some(_auth)) = AuthStore::get(&app) else {
         AuthStore::set(&app, None).map_err(|e| e.to_string())?;
         return Ok(UploadResult::NotAuthenticated);
     };
-
-    if !auth.is_upgraded() {
-        return Ok(upgrade_required_result(&app).await);
-    }
 
     let (project_path, meta) = load_screenshot_project_meta(&project_path)?;
     let existing_video_id = meta.sharing.as_ref().map(|sharing| sharing.id.clone());
@@ -5906,59 +5893,16 @@ fn list_screenshots_inner(
 #[specta::specta]
 #[instrument(skip(app))]
 async fn check_upgraded_and_update(app: AppHandle) -> Result<bool, String> {
-    println!("Checking upgraded status and updating...");
-
-    if let Ok(Some(settings)) = GeneralSettingsStore::get(&app)
-        && settings.commercial_license.is_some()
-    {
-        return Ok(true);
-    }
-
-    let Ok(Some(auth)) = AuthStore::get(&app) else {
-        return Ok(false);
-    };
-
-    if let Some(ref plan) = auth.plan
-        && plan.manual
-    {
-        return Ok(true);
-    }
-
-    println!("Fetching plan");
-    let response = app
-        .authed_api_request("/api/desktop/plan", |client, url| client.get(url))
-        .await
-        .map_err(|e| {
-            println!("Failed to fetch plan: {e}");
-            e.to_string()
-        })?;
-
-    println!("Plan fetch response status: {}", response.status());
-    let plan_data = response.json::<serde_json::Value>().await.map_err(|e| {
-        println!("Failed to parse plan response: {e}");
-        format!("Failed to parse plan response: {e}")
-    })?;
-
-    let is_pro = plan_data
-        .get("upgraded")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    println!("Pro status: {is_pro}");
-    let updated_auth = AuthStore {
-        secret: auth.secret,
-        user_id: auth.user_id,
-        plan: Some(Plan {
-            upgraded: is_pro,
-            manual: auth.plan.map(|p| p.manual).unwrap_or(false),
+    if let Ok(Some(mut auth)) = AuthStore::get(&app) {
+        auth.plan = Some(Plan {
+            upgraded: true,
+            manual: true,
             last_checked: chrono::Utc::now().timestamp() as i32,
-        }),
-        organizations: auth.organizations,
-        organizations_updated_at: auth.organizations_updated_at,
-    };
-    println!("Updating auth store with new pro status");
-    AuthStore::set(&app, Some(updated_auth)).map_err(|e| e.to_string())?;
+        });
+        AuthStore::set(&app, Some(auth)).map_err(|e| e.to_string())?;
+    }
 
-    Ok(is_pro)
+    Ok(true)
 }
 
 #[tauri::command]

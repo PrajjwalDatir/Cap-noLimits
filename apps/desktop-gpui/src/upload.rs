@@ -1109,10 +1109,7 @@ async fn upload_exported_video_inner(
         return Err("Failed to upload video: Rendered video not found".into());
     }
 
-    let metadata = build_video_meta(&file_path)?;
-    if !crate::store::auth_snapshot().is_upgraded() && metadata.duration_in_secs > 300.0 {
-        return Ok((UploadResult::UpgradeRequired, None));
-    }
+    let _metadata = build_video_meta(&file_path)?;
 
     progress(0.0);
     if cancel.load(Ordering::Relaxed) {
@@ -2121,12 +2118,8 @@ pub async fn upload_rendered_screenshot(
 ) -> Result<ScreenshotShareOutcome, String> {
     let auth = crate::store::auth_snapshot();
     if !auth.signed_in() {
-        // The Tauri command resets a corrupt/absent auth store on this path.
         let _ = crate::store::set_auth(None);
         return Ok(ScreenshotShareOutcome::NotAuthenticated);
-    }
-    if !auth.is_upgraded() {
-        return Ok(ScreenshotShareOutcome::UpgradeRequired);
     }
 
     match upload_screenshot_bytes(image_bytes, content_type, video_id).await {

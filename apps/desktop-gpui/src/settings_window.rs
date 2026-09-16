@@ -269,7 +269,7 @@ const INSTANT_RESOLUTION_TIERS: &[(u32, &str, &str)] = &[
 ];
 
 /// `FREE_INSTANT_MODE_MAX_RESOLUTION`.
-const FREE_INSTANT_MODE_MAX_RESOLUTION: u32 = 1280;
+const FREE_INSTANT_MODE_MAX_RESOLUTION: u32 = 3840;
 
 #[derive(Clone, Copy)]
 enum InstantQualityNotice {
@@ -3148,11 +3148,7 @@ impl SettingsWindow {
 
     fn render_instant_quality(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = self.theme;
-        let effective = if self.has_cap_pro {
-            self.settings.instant_mode_max_resolution
-        } else {
-            FREE_INSTANT_MODE_MAX_RESOLUTION
-        };
+        let effective = self.settings.instant_mode_max_resolution;
         let summary = INSTANT_RESOLUTION_TIERS
             .iter()
             .find(|(value, _, _)| *value == effective)
@@ -3163,16 +3159,9 @@ impl SettingsWindow {
                 .flex().flex_col().gap(px(12.))
                 .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Maximum resolution"))
                 .child(self.segmented_raw("instant-resolution", INSTANT_RESOLUTION_TIERS.iter().map(|(value, label, _)| {
-                    let locked = !self.has_cap_pro && *value > FREE_INSTANT_MODE_MAX_RESOLUTION;
-                    ui::SegmentOption::new(if locked { format!("{label} · Pro") } else { (*label).to_string() }, *value == effective).disabled(locked)
+                    ui::SegmentOption::new((*label).to_string(), *value == effective)
                 }).collect(), cx, |this, index, cx| this.select_instant_resolution(index, cx)))
                 .child(div().text_size(px(12.)).line_height(px(18.)).text_color(theme.settings_muted()).child(format!("{summary} Resolution is limited by the screen or area you record.")))
-                .when(!self.has_cap_pro, |this| this.child(
-                    div().flex().flex_col().items_start().gap(px(12.)).pt(px(12.)).border_t_1().border_color(theme.settings_border())
-                        .child(div().text_size(px(12.)).line_height(px(18.)).child("720p is included. Cap Pro unlocks 1080p, 1440p and 4K for Instant recordings."))
-                        .child(ui::Button::settings(&theme, "instant-quality-pricing", ui::ButtonVariant::Gray, ui::ButtonSize::Sm)
-                            .label("View plans ↗").on_click(|_, _, cx| cx.open_url(crate::auth::PRICING_URL)))
-                ))
                 .when_some(self.instant_quality_notice, |this, _| this.child(div().text_size(px(12.)).text_color(Hsla::from(theme.amber_11)).child("Couldn't save your recording settings. Please try again."))),
         );
         self.section(

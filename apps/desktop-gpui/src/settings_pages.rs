@@ -4615,8 +4615,6 @@ impl SettingsWindow {
                     |(index, (name, icon, description, view))| {
                         let button_label = if managed.is_some() {
                             "Managed by your organization"
-                        } else if !is_pro {
-                            "Upgrade to Pro"
                         } else {
                             "Configure"
                         };
@@ -4656,10 +4654,6 @@ impl SettingsWindow {
                                         cx,
                                         move |this, window, cx| {
                                             if managed_here {
-                                                return;
-                                            }
-                                            if !store::auth_snapshot().plan_upgraded {
-                                                cx.open_url(crate::auth::PRICING_URL);
                                                 return;
                                             }
                                             match view {

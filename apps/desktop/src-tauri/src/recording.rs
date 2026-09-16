@@ -2283,20 +2283,16 @@ async fn start_recording_prepared(
 
     let (video_upload_info, instant_mode_max_resolution) = match inputs.mode {
         RecordingMode::Instant => {
-            let Some(auth) = instant_auth else {
+            if instant_auth.is_none() {
                 let error = "Please sign in to use instant recording".to_string();
                 state_mtx.write().await.clear_pending_recording();
                 notify_recording_start_failed(&app, &error);
                 return Err(error);
-            };
-            let instant_mode_max_resolution = if auth.is_upgraded() {
-                general_settings
-                    .map_or(cap_recording::PRO_INSTANT_MODE_MAX_RESOLUTION, |settings| {
-                        settings.instant_mode_max_resolution
-                    })
-            } else {
-                cap_recording::FREE_INSTANT_MODE_MAX_RESOLUTION
-            };
+            }
+            let instant_mode_max_resolution = general_settings
+                .map_or(cap_recording::PRO_INSTANT_MODE_MAX_RESOLUTION, |settings| {
+                    settings.instant_mode_max_resolution
+                });
             let upload_mode = if matches!(inputs.capture_target, ScreenCaptureTarget::CameraOnly) {
                 "desktopMP4"
             } else {

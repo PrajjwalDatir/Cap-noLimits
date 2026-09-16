@@ -10,12 +10,7 @@ import {
 	users,
 } from "@cap/database/schema";
 import { serverEnv } from "@cap/env";
-import {
-	isProSubscription,
-	STRIPE_AVAILABLE,
-	stripe,
-	userIsPro,
-} from "@cap/utils";
+import { STRIPE_AVAILABLE, stripe, userIsPro } from "@cap/utils";
 import { OrganizationBrandingPatchBody } from "@cap/web-api-contract";
 import { ImageUploads } from "@cap/web-backend";
 import { type ImageUpload, Organisation } from "@cap/web-domain";
@@ -321,35 +316,9 @@ app.get("/org-custom-domain", withAuth, async (c) => {
 
 app.get("/plan", withAuth, async (c) => {
 	const user = c.get("user");
-
-	let isSubscribed = userIsPro(user);
-
-	if (!isSubscribed && !user.stripeSubscriptionId && user.stripeCustomerId) {
-		try {
-			const subscriptions = await stripe().subscriptions.list({
-				customer: user.stripeCustomerId,
-			});
-			const activeSubscription = subscriptions.data.find(
-				(sub) => sub.status === "active" && isProSubscription(sub),
-			);
-			if (activeSubscription) {
-				isSubscribed = true;
-				await db()
-					.update(users)
-					.set({
-						stripeSubscriptionStatus: activeSubscription.status,
-						stripeSubscriptionId: activeSubscription.id,
-					})
-					.where(eq(users.id, user.id));
-			}
-		} catch (error) {
-			console.error("[GET] Error fetching subscription from Stripe:", error);
-		}
-	}
-
 	return c.json({
-		upgraded: isSubscribed,
-		stripeSubscriptionStatus: user.stripeSubscriptionStatus,
+		upgraded: true,
+		stripeSubscriptionStatus: user.stripeSubscriptionStatus ?? "active",
 	});
 });
 

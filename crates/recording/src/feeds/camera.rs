@@ -679,11 +679,11 @@ struct SetupCameraResult {
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 static CAMERA_CALLBACK_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
-const TARGET_CAMERA_WIDTH: u32 = 1280;
+const TARGET_CAMERA_WIDTH: u32 = 1920;
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
-const TARGET_CAMERA_HEIGHT: u32 = 720;
+const TARGET_CAMERA_HEIGHT: u32 = 1080;
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
-const TARGET_CAMERA_FRAME_RATE: f32 = 30.0;
+const TARGET_CAMERA_FRAME_RATE: f32 = 60.0;
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 const PREFERRED_CAMERA_FRAME_RATE: f32 = 29.0;
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]

@@ -225,7 +225,11 @@ async function processAuthData(data: AuthParams) {
 				? { api_key: data.api_key }
 				: { token: data.token, expires: data.expires },
 		user_id: data.user_id,
-		plan: null,
+		plan: {
+			upgraded: true,
+			manual: true,
+			last_checked: Math.floor(Date.now() / 1000),
+		},
 	});
 
 	await commands.updateAuthPlan();

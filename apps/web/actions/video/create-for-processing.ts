@@ -5,7 +5,6 @@ import { getCurrentUser } from "@cap/database/auth/session";
 import { nanoId } from "@cap/database/helpers";
 import { videos, videoUploads } from "@cap/database/schema";
 import { serverEnv } from "@cap/env";
-import { userIsPro } from "@cap/utils";
 import { Storage as StorageService } from "@cap/web-backend";
 import {
 	type Folder,
@@ -47,19 +46,6 @@ export async function createVideoForServerProcessing({
 
 	// Free-tier length cap. `duration` here is client-supplied metadata sent at
 	// upload-start, so it is only authoritative when a positive value is given
-	// (instant recordings legitimately start with 0/unknown duration). A
-	// positive declared duration over the cap is rejected up-front; the real
-	// duration is only known at finalize, which is where the cap must ultimately
-	// be enforced.
-	if (
-		!userIsPro(user) &&
-		typeof duration === "number" &&
-		Number.isFinite(duration) &&
-		duration > 300
-	) {
-		throw new Error("upgrade_required");
-	}
-
 	await requireOrganizationAccess(user.id, orgId);
 
 	const videoId = Video.VideoId.make(nanoId());

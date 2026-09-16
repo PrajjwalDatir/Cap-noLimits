@@ -1,5 +1,3 @@
-import { buildEnv } from "@cap/env";
-
 export const STRIPE_DEVELOPER_CREDITS_PRODUCT_ID: Record<string, string> = {
 	development: "prod_U4mswfBp0bFc39",
 	production: "prod_REPLACE_BEFORE_PRODUCTION",
@@ -28,30 +26,8 @@ export const STRIPE_SAML_SSO_LEGACY_PRICE_ID = "price_1UBJQuFJxA1XpeSsnxL2KhP7";
 export const STRIPE_SAML_SSO_PRODUCT_ID = "prod_VBgo5t1scWLUPy";
 
 export const userIsPro = (
-	user?: {
+	_user?: {
 		stripeSubscriptionStatus?: string | null;
 		thirdPartyStripeSubscriptionId?: string | null;
 	} | null,
-) => {
-	if (!buildEnv.NEXT_PUBLIC_IS_CAP) return true;
-
-	if (!user) return false;
-
-	const { stripeSubscriptionStatus, thirdPartyStripeSubscriptionId } = user;
-
-	// Check for third-party subscription first
-	if (thirdPartyStripeSubscriptionId) {
-		return true;
-	}
-
-	// Then check regular subscription status. past_due keeps Pro during
-	// Stripe's dunning window: the sub moves to canceled/unpaid when retries
-	// exhaust, which is when access actually drops.
-	return (
-		stripeSubscriptionStatus === "active" ||
-		stripeSubscriptionStatus === "trialing" ||
-		stripeSubscriptionStatus === "complete" ||
-		stripeSubscriptionStatus === "paid" ||
-		stripeSubscriptionStatus === "past_due"
-	);
-};
+) => true;

@@ -71,53 +71,26 @@ impl AuthStore {
 
         let mut auth = auth;
 
-        match app
+        let _ = app
             .authed_api_request("/api/desktop/plan", |client, url| client.get(url))
-            .await
-        {
-            Ok(response) if response.status().is_success() => {
-                #[derive(Deserialize)]
-                struct PlanResponse {
-                    upgraded: bool,
-                }
-                match response.json::<PlanResponse>().await {
-                    Ok(plan_response) => {
-                        auth.plan = Some(Plan {
-                            upgraded: plan_response.upgraded,
-                            last_checked: chrono::Utc::now().timestamp() as i32,
-                            manual: auth.plan.as_ref().is_some_and(|p| p.manual),
-                        });
-                    }
-                    Err(e) => tracing::warn!("Failed to parse plan response: {e}"),
-                }
-            }
-            Ok(response) => tracing::warn!("Plan fetch returned {}", response.status()),
-            Err(e) => tracing::warn!("Failed to fetch plan: {e}"),
-        }
+            .await;
+        auth.plan = Some(Plan {
+            upgraded: true,
+            last_checked: chrono::Utc::now().timestamp() as i32,
+            manual: true,
+        });
 
         match api::fetch_organizations(app).await {
             Ok(orgs) => {
                 auth.organizations = orgs;
                 auth.organizations_updated_at = Some(chrono::Utc::now().timestamp() as i32);
             }
-            Err(e) => {
-                tracing::warn!("Failed to fetch organizations: {e}");
-                if auth.organizations.is_empty() {
-                    auth.organizations_updated_at = Some(chrono::Utc::now().timestamp() as i32);
-                }
-            }
+            Err(e) => tracing::warn!("Failed to fetch organizations: {e}"),
         }
 
         Self::set(app, Some(auth))?;
 
         Ok(())
-    }
-
-    pub fn is_upgraded(&self) -> bool {
-        match &self.plan {
-            Some(plan) => plan.upgraded || plan.manual,
-            None => false,
-        }
     }
 
     pub fn set(app: &AppHandle, value: Option<Self>) -> Result<(), String> {

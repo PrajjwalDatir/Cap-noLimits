@@ -188,11 +188,6 @@ export default function GoogleDriveConfigPage() {
 				headers: await protectedHeaders(),
 			});
 
-			if (response.status === 403) {
-				await commands.showWindow("Upgrade");
-				return null;
-			}
-
 			if (response.status !== 200)
 				throw new Error("Failed to start Google Drive connection");
 

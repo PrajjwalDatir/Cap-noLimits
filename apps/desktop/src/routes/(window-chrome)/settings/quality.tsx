@@ -14,7 +14,6 @@ import {
 	deriveGeneralSettings,
 	type GeneralSettingsStore,
 } from "~/utils/general-settings";
-import { openPricingPage } from "~/utils/pricing";
 import { commands, events, type StudioRecordingQuality } from "~/utils/tauri";
 import {
 	Section,
@@ -81,12 +80,9 @@ export default function RecordingQualitySettings() {
 	const studioQuality = createMemo(
 		() => settings().studioRecordingQuality ?? "balanced",
 	);
-	const hasCapPro = createMemo(
-		() => !!(auth.data?.plan?.upgraded || auth.data?.plan?.manual),
-	);
 	const [saving, setSaving] = createSignal(false);
-	const instantResolution = createMemo(() =>
-		hasCapPro() ? (settings().instantModeMaxResolution ?? 1920) : 1280,
+	const instantResolution = createMemo(
+		() => settings().instantModeMaxResolution ?? 1920,
 	);
 	const instantDescription = createMemo(
 		() =>
@@ -263,11 +259,7 @@ export default function RecordingQualitySettings() {
 											<button
 												type="button"
 												aria-pressed={instantResolution() === option.value}
-												disabled={
-													saving() ||
-													auth.isPending ||
-													(!hasCapPro() && option.value > 1280)
-												}
+												disabled={saving() || auth.isPending}
 												onClick={() =>
 													void save("instantModeMaxResolution", option.value)
 												}
@@ -279,9 +271,6 @@ export default function RecordingQualitySettings() {
 												)}
 											>
 												{option.label}
-												<Show when={!hasCapPro() && option.value > 1280}>
-													<span class="text-[9px] text-gray-10">Pro</span>
-												</Show>
 											</button>
 										)}
 									</For>
@@ -290,21 +279,6 @@ export default function RecordingQualitySettings() {
 									{instantDescription()} Resolution is limited by the screen or
 									area you record.
 								</p>
-								<Show when={!auth.isPending && !hasCapPro()}>
-									<div class="flex flex-col items-start gap-3 mt-4 pt-4 border-t border-gray-4">
-										<p class="text-xs leading-relaxed text-gray-11">
-											720p is included. Cap Pro unlocks 1080p, 1440p and 4K for
-											Instant recordings.
-										</p>
-										<Button
-											size="sm"
-											variant="gray"
-											onClick={() => void openPricingPage()}
-										>
-											View plans ↗
-										</Button>
-									</div>
-								</Show>
 							</SectionCard>
 						</Section>
 					</div>

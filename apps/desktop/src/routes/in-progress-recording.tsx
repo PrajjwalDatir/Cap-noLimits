@@ -29,7 +29,6 @@ import {
 import { createStore, produce, reconcile } from "solid-js/store";
 import { TransitionGroup } from "solid-transition-group";
 import Tooltip from "~/components/Tooltip";
-import { authStore } from "~/store";
 import { getCameraWindow } from "~/utils/camera-window";
 import { createTauriEventListener } from "~/utils/createEventListener";
 import {
@@ -108,16 +107,6 @@ function InProgressRecordingInner() {
 	const optionsQuery = createOptionsQuery();
 	const startedWithMicrophone = optionsQuery.rawOptions.micName != null;
 	const startedWithCameraInput = optionsQuery.rawOptions.cameraID != null;
-
-	const [authData, setAuthData] = createSignal<{
-		plan?: { upgraded?: boolean };
-	} | null>(null);
-	onMount(() => {
-		authStore
-			.get()
-			.then(setAuthData)
-			.catch(() => setAuthData(null));
-	});
 
 	const audioLevel = createAudioInputLevel();
 	const [disconnectedInputs, setDisconnectedInputs] =
@@ -841,15 +830,7 @@ function InProgressRecordingInner() {
 		return Math.max(0, t);
 	};
 
-	const isMaxRecordingLimitEnabled = () => {
-		// Only enforce the limit on instant mode.
-		// We enforce it on studio mode when exporting.
-		return (
-			optionsQuery.rawOptions.mode === "instant" &&
-			// If the data is loaded and the user is not upgraded
-			authData()?.plan?.upgraded === false
-		);
-	};
+	const isMaxRecordingLimitEnabled = () => false;
 
 	let aborted = false;
 	createEffect(() => {

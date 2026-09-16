@@ -107,10 +107,7 @@ app.get(
 			)
 				return c.json({ error: "invalid_video_id" }, { status: 400 });
 
-			const isCapPro = userIsPro(user);
-
-			if (!isCapPro && durationInSecs && durationInSecs > /* 5 min */ 5 * 60)
-				return c.json({ error: "upgrade_required" }, { status: 403 });
+			const _isCapPro = userIsPro(user);
 
 			console.log("Video create request:", {
 				recordingMode,
