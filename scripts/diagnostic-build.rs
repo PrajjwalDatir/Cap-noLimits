@@ -45,6 +45,19 @@ pub fn emit() {
             println!("cargo:rustc-env=CAP_BUILD_REVISION={revision}");
         }
     }
+    if let Ok(branch) =
+        std::env::var("CAP_BUILD_BRANCH").or_else(|_| std::env::var("GITHUB_REF_NAME"))
+    {
+        println!("cargo:rustc-env=CAP_BUILD_BRANCH={branch}");
+    } else if let Some(output) = git(&["rev-parse", "--abbrev-ref", "HEAD"])
+        && output.status.success()
+    {
+        let branch = String::from_utf8_lossy(&output.stdout);
+        let branch = branch.trim();
+        if !branch.is_empty() && branch != "HEAD" {
+            println!("cargo:rustc-env=CAP_BUILD_BRANCH={branch}");
+        }
+    }
     if let Some(output) = git(&["diff-index", "--quiet", "HEAD", "--"]) {
         match output.status.code() {
             Some(0) => println!("cargo:rustc-env=CAP_BUILD_DIRTY=false"),

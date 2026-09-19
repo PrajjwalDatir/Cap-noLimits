@@ -16,8 +16,7 @@ use crate::{
     store::{GeneralSettings, UpdateChannel},
 };
 
-const UPDATE_ENDPOINT: &str =
-    "https://cdn.crabnebula.app/update/cap/cap/{target}/{current_version}";
+pub const REPO_OWNER_NAME: &str = "PrajjwalDatir/Cap-noLimits";
 const STABLE_FIRST_CHECK_DELAY: Duration = Duration::from_secs(10);
 const NIGHTLY_FIRST_CHECK_DELAY: Duration = Duration::from_secs(60);
 const NIGHTLY_CHECK_INTERVAL: Duration = Duration::from_secs(2 * 60 * 60);
@@ -80,13 +79,15 @@ fn updater_target() -> Result<String, String> {
 }
 
 fn endpoint(channel: UpdateChannel) -> Result<String, String> {
-    let url = UPDATE_ENDPOINT
-        .replace("{target}", &updater_target()?)
-        .replace("{current_version}", env!("CARGO_PKG_VERSION"));
-    Ok(match channel {
-        UpdateChannel::Stable => url,
-        UpdateChannel::Nightly => format!("{url}?channel=nightly"),
-    })
+    let branch = match option_env!("CAP_BUILD_BRANCH") {
+        Some(branch) if !branch.is_empty() => branch,
+        _ => "pro-unlocked-minimal",
+    };
+    let file = match channel {
+        UpdateChannel::Stable => "latest.json",
+        UpdateChannel::Nightly => "latest-nightly.json",
+    };
+    Ok(format!("https://raw.githubusercontent.com/{REPO_OWNER_NAME}/{branch}/{file}"))
 }
 
 async fn remote_version(channel: UpdateChannel) -> Result<Option<Version>, String> {

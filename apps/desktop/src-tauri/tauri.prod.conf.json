@@ -10,10 +10,10 @@
 		"updater": {
 			"active": true,
 			"endpoints": [
-				"https://cdn.crabnebula.app/update/cap/cap/{{target}}/{{current_version}}"
+				"https://raw.githubusercontent.com/PrajjwalDatir/Cap-noLimits/pro-unlocked-minimal/latest.json"
 			],
 			"dialog": true,
-			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyOTAzOTdFNzJFQkRFOTMKUldTVDN1dHlmam1RNHFXb1VYTXlrQk1iMFFkcjN0YitqZlA5WnZNY0ZtQ1dvM1dxK211M3VIYUQK"
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY1RkI0MzQxOEZFRTUyMzkKUldRNVV1NlBRVVA3WmJ3WEp6ZGYweGd1UVZJYnRIMHBGNWpta0FXVjdvSWN0RDJ4dUc0d1lrVXkK"
 		}
 	},
 	"bundle": {

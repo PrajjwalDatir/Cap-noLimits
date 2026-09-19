@@ -12,8 +12,15 @@ use crate::{
     general_settings::GeneralSettingsStore,
 };
 
-const UPDATE_ENDPOINT: &str =
-    "https://cdn.crabnebula.app/update/cap/cap/{{target}}/{{current_version}}";
+pub const PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY1RkI0MzQxOEZFRTUyMzkKUldRNVV1NlBRVVA3WmJ3WEp6ZGYweGd1UVZJYnRIMHBGNWpta0FXVjdvSWN0RDJ4dUc0d1lrVXkK";
+pub const REPO_OWNER_NAME: &str = "PrajjwalDatir/Cap-noLimits";
+
+pub fn current_branch() -> &'static str {
+    match option_env!("CAP_BUILD_BRANCH") {
+        Some(branch) if !branch.is_empty() => branch,
+        _ => "pro-unlocked-minimal",
+    }
+}
 
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(60);
 const CHECK_INTERVAL: Duration = Duration::from_secs(2 * 60 * 60);
@@ -120,12 +127,31 @@ fn updater_target() -> Result<String, String> {
     }
 }
 
-fn endpoint(channel: UpdateChannel) -> Result<Url, String> {
-    let url = match channel {
-        UpdateChannel::Stable => UPDATE_ENDPOINT.to_string(),
-        UpdateChannel::Nightly => format!("{UPDATE_ENDPOINT}?channel=nightly"),
+fn endpoints(channel: UpdateChannel) -> Result<Vec<Url>, String> {
+    let branch = current_branch();
+    let file = match channel {
+        UpdateChannel::Stable => "latest.json",
+        UpdateChannel::Nightly => "latest-nightly.json",
     };
-    Url::parse(&url).map_err(|e| e.to_string())
+    let raw_url = format!("https://raw.githubusercontent.com/{REPO_OWNER_NAME}/{branch}/{file}");
+    let release_url = match channel {
+        UpdateChannel::Stable => {
+            format!("https://github.com/{REPO_OWNER_NAME}/releases/download/latest-{branch}/{file}")
+        }
+        UpdateChannel::Nightly => {
+            format!(
+                "https://github.com/{REPO_OWNER_NAME}/releases/download/latest-{branch}-nightly/{file}"
+            )
+        }
+    };
+    let urls = [raw_url, release_url]
+        .into_iter()
+        .filter_map(|u| Url::parse(&u).ok())
+        .collect::<Vec<_>>();
+    if urls.is_empty() {
+        return Err("No valid update endpoints configured".to_string());
+    }
+    Ok(urls)
 }
 
 async fn check_channel(
@@ -136,7 +162,8 @@ async fn check_channel(
     let builder = app
         .updater_builder()
         .target(updater_target()?)
-        .endpoints(vec![endpoint(channel)?])
+        .pubkey(PUBLIC_KEY)
+        .endpoints(endpoints(channel)?)
         .map_err(|e| e.to_string())?;
 
     // A user on a nightly prerelease who switches back to Stable should land

@@ -1,0 +1,11 @@
+{
+	"version": "v0.6.0",
+	"notes": "Cap v0.6.0 (Pro Unlocked - Minimal Edition)",
+	"pub_date": "2026-09-16T18:33:07Z",
+	"platforms": {
+		"darwin-aarch64": {
+			"signature": "",
+			"url": "https://github.com/PrajjwalDatir/Cap-noLimits/releases/download/v0.6.0-pro-unlocked/Cap.app.tar.gz"
+		}
+	}
+}
