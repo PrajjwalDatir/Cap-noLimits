@@ -166,8 +166,15 @@ export default function Settings(props: RouteSectionProps) {
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
 		queryFn: async () => {
-			const currentAuth = auth();
 			if (!currentAuth) return null;
+
+			if (currentAuth.user_id === "local_user") {
+				return {
+					name: "Local User",
+					email: "local@cap.offline",
+					imageUrl: null,
+				};
+			}
 
 			if (isAuthExpired(currentAuth)) {
 				await clearLocalAuth();
@@ -263,16 +270,13 @@ export default function Settings(props: RouteSectionProps) {
 		},
 	];
 	const accountName = createMemo(() => {
-		if (!auth()) return "Click to sign in";
-		if (!userProfile.isSuccess) return "Signed in";
-
 		const name = userProfile.data?.name?.trim();
 		if (name) return name;
 
 		const email = userProfile.data?.email?.trim();
 		if (email) return email;
 
-		return "Signed in";
+		return "Local Account";
 	});
 	const accountRemoteImageUrl = createMemo(() => {
 		if (!userProfile.isSuccess) return null;
@@ -564,7 +568,11 @@ export default function Settings(props: RouteSectionProps) {
 							<div class="h-9 w-full rounded-lg bg-gray-4 animate-pulse" />
 						}
 					>
-						{auth() ? (
+						{auth()?.user_id === "local_user" ? (
+							<div class="text-center text-xs text-gray-10 py-1.5 border border-gray-4 rounded-lg bg-gray-2">
+								Offline Mode
+							</div>
+						) : auth() ? (
 							<Button onClick={handleAuth} variant="gray" class="w-full">
 								Sign Out
 							</Button>

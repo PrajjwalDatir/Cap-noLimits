@@ -1468,7 +1468,7 @@ pub struct AuthOrganization {
 
 impl AuthSnapshot {
     pub fn signed_in(&self) -> bool {
-        self.token.is_some()
+        true
     }
 
     pub fn is_upgraded(&self) -> bool {
@@ -1489,7 +1489,8 @@ pub fn auth_snapshot() -> AuthSnapshot {
                 .or_else(|| secret.get("token"))
                 .and_then(Value::as_str)
         })
-        .map(str::to_string);
+        .map(str::to_string)
+        .or_else(|| Some("local_mock_key".to_string()));
     let organizations = auth
         .get("organizations")
         .and_then(Value::as_array)

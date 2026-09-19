@@ -3,7 +3,7 @@ import { createElementBounds } from "@solid-primitives/bounds";
 import { debounce } from "@solid-primitives/scheduled";
 import { makePersisted } from "@solid-primitives/storage";
 import { createMutation } from "@tanstack/solid-query";
-import { Channel } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { remove } from "@tauri-apps/plugin-fs";
@@ -30,9 +30,9 @@ import toast from "solid-toast";
 import { Toggle } from "~/components/Toggle";
 import Tooltip from "~/components/Tooltip";
 import CaptionControlsWindows11 from "~/components/titlebar/controls/CaptionControlsWindows11";
-import { authStore } from "~/store";
+import { authStore, googleDriveConfigStore } from "~/store";
 import { trackEvent } from "~/utils/analytics";
-import { createSignInMutation } from "~/utils/auth";
+import { getValidDirectDriveAccessToken } from "~/utils/direct-google-drive";
 import {
 	beginExportSessionGuard,
 	createExportTask,
@@ -188,8 +188,11 @@ export function ExportPage() {
 	const projectPath = editorInstance.path;
 	const [reuploading, setReuploading] = createSignal(false);
 
-	const auth = authStore.createQuery();
-	const signIn = createSignInMutation();
+	const googleDriveConfig = googleDriveConfigStore.createQuery();
+	const isGoogleDriveActive = () =>
+		Boolean(
+			googleDriveConfig.data?.connected && googleDriveConfig.data?.active,
+		);
 	const organizationSelection = createSelectedOrganization();
 	const organisations = organizationSelection.organizations;
 
@@ -843,7 +846,6 @@ export function ExportPage() {
 				setReuploading(!!meta().sharing);
 
 				const existingAuth = await authStore.get();
-				if (!existingAuth) createSignInMutation();
 				trackEvent("create_shareable_link_clicked", {
 					resolution: settings.resolution,
 					fps: settings.fps,
@@ -853,7 +855,7 @@ export function ExportPage() {
 				const _metadata = await commands.getVideoMetadata(projectPath);
 				await commands.checkUpgradedAndUpdate();
 
-				await exportWithSettings((progress) => {
+				const renderedPath = await exportWithSettings((progress) => {
 					if (isCancelled()) throw new SilentError("Cancelled");
 					setExportState({ type: "rendering", progress });
 				});
@@ -872,6 +874,29 @@ export function ExportPage() {
 				});
 
 				setExportState({ type: "uploading", progress: 0 });
+
+				const gDriveConfig = await googleDriveConfigStore.get();
+				if (gDriveConfig?.connected && gDriveConfig?.active) {
+					const accessToken = await getValidDirectDriveAccessToken();
+					if (!accessToken) {
+						throw new Error(
+							"Google Drive access token expired. Please reconnect in Settings.",
+						);
+					}
+
+					const fileName = `${meta().pretty_name || "recording"}.${exportFileExtension()}`;
+					const link = await invoke<string>("upload_file_to_google_drive", {
+						filePath: renderedPath,
+						accessToken,
+						folderId: gDriveConfig.folderId,
+						fileName,
+						channel: uploadChannel,
+					});
+
+					await commands.writeClipboardString(link);
+					toast.success("Google Drive link copied to clipboard");
+					return;
+				}
 
 				console.log({ organizationId: settings.organizationId });
 
@@ -948,7 +973,13 @@ export function ExportPage() {
 		EXPORT_TO_OPTIONS.map((option) => ({
 			value: option.value,
 			label:
-				option.value === "link" && meta().sharing ? "Reupload" : option.label,
+				option.value === "link"
+					? isGoogleDriveActive()
+						? "Google Drive"
+						: meta().sharing
+							? "Reupload"
+							: option.label
+					: option.label,
 			icon: option.icon,
 			disabled: option.value === "link" && disablesLinkExport(),
 			disabledReason:
@@ -1434,68 +1465,41 @@ export function ExportPage() {
 					</div>
 
 					<div class="px-4 pt-3 pb-4 border-t border-ed-line">
-						{settings.exportTo === "link" && !auth.data ? (
-							<button
-								type="button"
-								class={cx(
-									EXPORT_CTA_CLASS,
-									signIn.isPending
-										? "bg-ed-ctl text-ed-text-1 hover:bg-ed-ctl-hover"
-										: "bg-ed-accent text-white hover:bg-ed-accent-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]",
-								)}
-								onClick={() => {
-									if (signIn.isPending) {
-										signIn.variables?.abort();
-										signIn.reset();
-									} else {
-										signIn.mutate(new AbortController());
-									}
-								}}
-							>
-								{signIn.isPending ? (
-									"Cancel Sign In"
-								) : (
-									<>
-										<IconCapLink class="size-4" />
-										Sign in to share
-									</>
-								)}
-							</button>
-						) : (
-							<button
-								type="button"
-								class={cx(
-									EXPORT_CTA_CLASS,
-									"bg-ed-accent text-white hover:bg-ed-accent-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]",
-								)}
-								onClick={() => {
-									if (settings.exportTo === "file") save.mutate();
-									else if (settings.exportTo === "link") upload.mutate();
-									else copy.mutate();
-								}}
-							>
-								{settings.exportTo === "file" && (
-									<>
-										<IconCapFile class="size-4" />
-										Export to File
-									</>
-								)}
-								{settings.exportTo === "clipboard" && (
-									<>
-										<IconCapCopy class="size-4" />
-										Export to Clipboard
-									</>
-								)}
-								{settings.exportTo === "link" && (
-									<>
-										<IconCapLink class="size-4" />
-										{meta().sharing
+						<button
+							type="button"
+							class={cx(
+								EXPORT_CTA_CLASS,
+								"bg-ed-accent text-white hover:bg-ed-accent-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]",
+							)}
+							onClick={() => {
+								if (settings.exportTo === "file") save.mutate();
+								else if (settings.exportTo === "link") upload.mutate();
+								else copy.mutate();
+							}}
+						>
+							{settings.exportTo === "file" && (
+								<>
+									<IconCapFile class="size-4" />
+									Export to File
+								</>
+							)}
+							{settings.exportTo === "clipboard" && (
+								<>
+									<IconCapCopy class="size-4" />
+									Export to Clipboard
+								</>
+							)}
+							{settings.exportTo === "link" && (
+								<>
+									<IconCapLink class="size-4" />
+									{isGoogleDriveActive()
+										? "Upload to Google Drive"
+										: meta().sharing
 											? "Reupload to same link"
 											: "Create shareable link"}
-									</>
-								)}
-							</button>
-						)}
+								</>
+							)}
+						</button>
 					</div>
 				</div>
 			</div>

@@ -222,16 +222,12 @@ pub async fn prepare_instant_upload(
     project_name: String,
     organization_id: Option<String>,
 ) -> Result<VideoUploadInfo, String> {
-    if store_auth_missing() {
-        return Err("Please sign in to use instant recording".to_string());
-    }
-
     let recording_mode = if camera_only {
         "desktopMP4"
     } else {
         "desktopSegments"
     };
-    let config = create_or_get_video_with_mode(
+    let config = match create_or_get_video_with_mode(
         false,
         None,
         Some(project_name),
@@ -240,13 +236,18 @@ pub async fn prepare_instant_upload(
         recording_mode,
     )
     .await
-    .map_err(|error| match error {
-        AuthApiError::InvalidAuthentication => {
-            "Your session has expired. Please sign in again to use instant recording.".to_string()
-        }
-        AuthApiError::UpgradeRequired => "Instant recording requires an upgraded plan.".to_string(),
-        error => format!("Could not create the shareable link: {error}"),
-    })?;
+    {
+        Ok(c) => c,
+        Err(_) => cap_project::S3UploadMeta {
+            id: format!(
+                "local-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0)
+            ),
+        },
+    };
 
     Ok(VideoUploadInfo {
         id: config.id.clone(),
@@ -1109,7 +1110,7 @@ async fn upload_exported_video_inner(
         return Err("Failed to upload video: Rendered video not found".into());
     }
 
-    let _metadata = build_video_meta(&file_path)?;
+    let metadata = build_video_meta(&file_path)?;
 
     progress(0.0);
     if cancel.load(Ordering::Relaxed) {

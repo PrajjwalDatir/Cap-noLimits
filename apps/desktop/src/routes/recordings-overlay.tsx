@@ -766,11 +766,7 @@ function createRecordingMutations(
 				return;
 			}
 
-			// Check authentication first
-			const existingAuth = await authStore.get();
-			if (!existingAuth) {
-				throw new Error("You need to sign in to share recordings");
-			}
+			const _existingAuth = await authStore.get();
 
 			const _metadata = await commands.getVideoMetadata(media.path);
 			await commands.checkUpgradedAndUpdate();

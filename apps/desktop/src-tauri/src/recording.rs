@@ -1572,7 +1572,9 @@ mod recording_storage_preflight_tests {
 #[derive(Serialize, Type)]
 pub enum RecordingAction {
     Started,
+    #[allow(dead_code)]
     InvalidAuthentication,
+    #[allow(dead_code)]
     UpgradeRequired,
 }
 
@@ -2283,12 +2285,6 @@ async fn start_recording_prepared(
 
     let (video_upload_info, instant_mode_max_resolution) = match inputs.mode {
         RecordingMode::Instant => {
-            if instant_auth.is_none() {
-                let error = "Please sign in to use instant recording".to_string();
-                state_mtx.write().await.clear_pending_recording();
-                notify_recording_start_failed(&app, &error);
-                return Err(error);
-            }
             let instant_mode_max_resolution = general_settings
                 .map_or(cap_recording::PRO_INSTANT_MODE_MAX_RESOLUTION, |settings| {
                     settings.instant_mode_max_resolution
@@ -2311,29 +2307,13 @@ async fn start_recording_prepared(
             .await
             {
                 Ok(meta) => meta,
-                Err(AuthedApiError::InvalidAuthentication) => {
-                    state_mtx.write().await.clear_pending_recording();
-                    // Returned as an action rather than an error, but the picker that
-                    // invoked us may already be gone — surface it as a start failure too.
-                    notify_recording_start_failed(
-                        &app,
-                        "Your session has expired. Please sign in again to use instant recording.",
-                    );
-                    return Ok(RecordingAction::InvalidAuthentication);
-                }
-                Err(AuthedApiError::UpgradeRequired) => {
-                    state_mtx.write().await.clear_pending_recording();
-                    notify_recording_start_failed(
-                        &app,
-                        "Instant recording requires an upgraded plan.",
-                    );
-                    return Ok(RecordingAction::UpgradeRequired);
-                }
                 Err(err) => {
-                    let error = format!("Could not create the shareable link: {err}");
-                    state_mtx.write().await.clear_pending_recording();
-                    notify_recording_start_failed(&app, &error);
-                    return Err(error);
+                    warn!(
+                        "Could not create remote shareable video ({err}), continuing with local instant recording"
+                    );
+                    cap_project::S3UploadMeta {
+                        id: format!("local-{}", uuid::Uuid::new_v4().simple()),
+                    }
                 }
             };
 

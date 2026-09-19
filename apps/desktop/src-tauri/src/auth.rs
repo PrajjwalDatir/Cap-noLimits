@@ -37,24 +37,46 @@ pub struct Plan {
 }
 
 impl AuthStore {
+    pub fn mock_default() -> Self {
+        Self {
+            secret: AuthSecret::ApiKey {
+                api_key: "local_mock_key".to_string(),
+            },
+            user_id: Some("local_user".to_string()),
+            plan: Some(Plan {
+                upgraded: true,
+                manual: true,
+                last_checked: chrono::Utc::now().timestamp() as i32,
+            }),
+            organizations: Vec::new(),
+            organizations_updated_at: None,
+        }
+    }
+
     pub fn load<R: Runtime>(app: &AppHandle<R>) -> Result<Option<Self>, String> {
         let Some(store) = app
             .store("store")
             .map(|s| s.get("auth"))
             .map_err(|e| e.to_string())?
         else {
-            return Ok(None);
+            return Ok(Some(Self::mock_default()));
         };
 
-        serde_json::from_value(store).map_err(|e| e.to_string())
+        match serde_json::from_value(store) {
+            Ok(auth) => Ok(Some(auth)),
+            Err(_) => Ok(Some(Self::mock_default())),
+        }
     }
 
     pub fn get<R: Runtime>(app: &AppHandle<R>) -> Result<Option<Self>, String> {
         let Ok(Some(store)) = app.store("store").map(|s| s.get("auth")) else {
-            return Ok(None);
+            return Ok(Some(Self::mock_default()));
         };
 
-        serde_json::from_value(store).map_err(|e| e.to_string())
+        match serde_json::from_value(store) {
+            Ok(auth) => Ok(Some(auth)),
+            Err(_) => Ok(Some(Self::mock_default())),
+        }
     }
 
     pub async fn update_auth_plan(app: &AppHandle) -> Result<(), String> {

@@ -1,15 +1,23 @@
 import { Button } from "@cap/ui-solid";
-import { useMutation } from "@tanstack/solid-query";
-import { createResource, createSignal, Show, Suspense } from "solid-js";
-import { createSelectedOrganization } from "~/utils/organization-branding";
+import {
+	createEffect,
+	createResource,
+	createSignal,
+	Show,
+	Suspense,
+} from "solid-js";
+import { Input } from "~/routes/editor/ui";
+import { defaultLocalGoogleDriveConfig, googleDriveConfigStore } from "~/store";
+import {
+	disconnectDirectGoogleDrive,
+	fetchDirectGoogleDriveQuota,
+	startDirectGoogleDriveAuth,
+} from "~/utils/direct-google-drive";
 import { commands } from "~/utils/tauri";
-import { apiClient, protectedHeaders } from "~/utils/web-api";
 import { Section, SectionCard, SettingsPageContent } from "../Setting";
 import { IntegrationConfigHeader } from "./config-header";
 
 const byteUnits = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
-const googleDriveConnectionPollIntervalMs = 1500;
-const googleDriveConnectionPollTimeoutMs = 120000;
 
 const formatBytes = (value?: string | null) => {
 	if (!value) return null;
@@ -29,316 +37,292 @@ const formatBytes = (value?: string | null) => {
 	return `${size.toFixed(decimals)} ${byteUnits[unitIndex]}`;
 };
 
-const formatTimestamp = (value: string) => {
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return null;
-
-	return new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(date);
-};
-
-const wait = (ms: number) =>
-	new Promise((resolve) => {
-		setTimeout(resolve, ms);
-	});
-
-const fetchStorageIntegrations = async (
-	orgId: string | null,
-	refreshStorageQuota = false,
-) => {
-	const response = await apiClient.desktop.getStorageIntegrations({
-		query:
-			refreshStorageQuota || orgId
-				? {
-						...(refreshStorageQuota ? { refreshStorageQuota: true } : {}),
-						...(orgId ? { orgId } : {}),
-					}
-				: undefined,
-		headers: await protectedHeaders(),
-	});
-
-	if (response.status !== 200)
-		throw new Error("Failed to fetch storage integrations");
-
-	return response.body;
-};
-
-const fetchS3Config = async (orgId: string | null) => {
-	const response = await apiClient.desktop.getS3Config({
-		query: orgId ? { orgId } : undefined,
-		headers: await protectedHeaders(),
-	});
-
-	if (response.status !== 200) throw new Error("Failed to fetch S3 config");
-
-	return response.body;
-};
-
 export default function GoogleDriveConfigPage() {
-	const organizationSelection = createSelectedOrganization();
-	const [isWaitingForConnection, setIsWaitingForConnection] =
-		createSignal(false);
-	const [isRefreshing, setIsRefreshing] = createSignal(false);
-	const [storage, { mutate: setStorage }] = createResource(
-		() => organizationSelection.selectedOrganizationId(),
-		(orgId) => fetchStorageIntegrations(orgId),
-	);
+	const driveStoreQuery = googleDriveConfigStore.createQuery();
+	const config = () => driveStoreQuery.data ?? defaultLocalGoogleDriveConfig;
 
-	const googleDrive = () => storage()?.googleDrive;
-	const storageQuota = () => googleDrive()?.storageQuota ?? null;
-	const isConnected = () => googleDrive()?.connected === true;
-	const isActive = () => storage()?.activeProvider === "googleDrive";
-	const managedByOrganization = () => storage()?.managedByOrganization ?? null;
+	const [clientId, setClientId] = createSignal("");
+	const [clientSecret, setClientSecret] = createSignal("");
+	const [isAuthorizing, setIsAuthorizing] = createSignal(false);
+	const [isTesting, setIsTesting] = createSignal(false);
+	const [abortController, setAbortController] =
+		createSignal<AbortController | null>(null);
 
-	const [s3Config, { mutate: setS3Config }] = createResource(
-		() => organizationSelection.selectedOrganizationId(),
-		(orgId) => fetchS3Config(orgId),
-	);
+	createEffect(() => {
+		const current = config();
+		if (current.clientId && !clientId()) {
+			setClientId(current.clientId);
+		}
+		if (current.clientSecret && !clientSecret()) {
+			setClientSecret(current.clientSecret);
+		}
+	});
 
-	const hasS3Config = () => {
-		const result = s3Config();
-		return (
-			result?.source === "user" &&
-			!!result.config.accessKeyId &&
-			!!result.config.bucketName
+	const isConnected = () => config().connected;
+	const isActive = () => config().active;
+
+	const [quota, { refetch: refetchQuota, loading: isQuotaLoading }] =
+		createResource(
+			() => isConnected(),
+			async (connected) => {
+				if (!connected) return null;
+				return await fetchDirectGoogleDriveQuota();
+			},
 		);
-	};
-
-	const updateStorage = async (refreshStorageQuota = false) => {
-		const nextStorage = await fetchStorageIntegrations(
-			organizationSelection.selectedOrganizationId(),
-			refreshStorageQuota,
-		);
-		setStorage(nextStorage);
-		return nextStorage;
-	};
-
-	const updateS3Config = async () => {
-		const nextConfig = await fetchS3Config(
-			organizationSelection.selectedOrganizationId(),
-		);
-		setS3Config(nextConfig);
-		return nextConfig;
-	};
-
-	const refetch = async () => {
-		setIsRefreshing(true);
-		await Promise.all([updateStorage(true), updateS3Config()]).finally(() => {
-			setIsRefreshing(false);
-		});
-	};
-
-	const quotaUsageLabel = () => {
-		const quota = storageQuota();
-		const usage = formatBytes(quota?.usage);
-		if (!quota || !usage) return null;
-
-		const limit = formatBytes(quota.limit);
-		return limit ? `${usage} of ${limit} used` : `${usage} used`;
-	};
 
 	const quotaUsagePercent = () => {
-		const quota = storageQuota();
-		if (!quota?.limit || !quota.usage) return null;
+		const q = quota();
+		if (!q?.limit || !q.usage) return null;
 
-		const limit = Number(quota.limit);
-		const usage = Number(quota.usage);
-		if (!Number.isFinite(limit) || !Number.isFinite(usage) || limit <= 0)
+		const limit = Number(q.limit);
+		const usage = Number(q.usage);
+		if (!Number.isFinite(limit) || !Number.isFinite(usage) || limit <= 0) {
 			return null;
+		}
 
 		return Math.min(Math.max((usage / limit) * 100, 0), 100);
 	};
 
-	const quotaTimestampLabel = () => {
-		const quota = storageQuota();
-		if (!quota) return null;
+	const quotaUsageLabel = () => {
+		const q = quota();
+		const usage = formatBytes(q?.usage);
+		if (!q || !usage) return null;
 
-		const timestamp = formatTimestamp(quota.fetchedAt);
-		if (!timestamp) return null;
-
-		return `${quota.stale ? "Cached" : "Updated"} ${timestamp}`;
+		const limit = formatBytes(q.limit);
+		return limit ? `${usage} of ${limit} used` : `${usage} used`;
 	};
 
-	const waitForGoogleDriveConnection = async () => {
-		setIsWaitingForConnection(true);
-		try {
-			const timeoutAt = Date.now() + googleDriveConnectionPollTimeoutMs;
-			while (Date.now() < timeoutAt) {
-				await wait(googleDriveConnectionPollIntervalMs);
-				const nextStorage = await updateStorage();
-				if (nextStorage?.googleDrive.connected) {
-					await updateS3Config();
-					return;
-				}
-			}
+	const remainingBytes = () => {
+		const q = quota();
+		if (!q?.limit || !q.usage) return null;
+		const rem = Number(q.limit) - Number(q.usage);
+		return rem >= 0 ? formatBytes(String(rem)) : null;
+	};
+
+	const handleConnect = async () => {
+		const id = clientId().trim();
+		const secret = clientSecret().trim();
+
+		if (!id || !secret) {
 			await commands.globalMessageDialog(
-				"Finish connecting Google Drive in your browser, then return here and refresh.",
+				"Please enter both a Google Client ID and Client Secret.",
 			);
+			return;
+		}
+
+		const controller = new AbortController();
+		setAbortController(controller);
+		setIsAuthorizing(true);
+
+		try {
+			await startDirectGoogleDriveAuth(id, secret, controller.signal);
+			await driveStoreQuery.refetch();
+			await refetchQuota();
+			await commands.globalMessageDialog(
+				"Successfully connected to Google Drive directly!",
+			);
+		} catch (error: unknown) {
+			if (!controller.signal.aborted) {
+				const message = error instanceof Error ? error.message : String(error);
+				await commands.globalMessageDialog(
+					`Failed to connect to Google Drive: ${message}`,
+				);
+			}
 		} finally {
-			setIsWaitingForConnection(false);
+			setIsAuthorizing(false);
+			setAbortController(null);
 		}
 	};
 
-	const connect = useMutation(() => ({
-		mutationFn: async () => {
-			const response = await apiClient.desktop.connectGoogleDriveStorage({
-				body: {},
-				headers: await protectedHeaders(),
-			});
+	const handleCancelAuth = () => {
+		abortController()?.abort();
+		setIsAuthorizing(false);
+		setAbortController(null);
+	};
 
-			if (response.status !== 200)
-				throw new Error("Failed to start Google Drive connection");
+	const handleToggleActive = async () => {
+		const nextActive = !isActive();
+		await googleDriveConfigStore.set({ active: nextActive });
+		await driveStoreQuery.refetch();
+	};
 
-			await commands.openExternalLink(response.body.url);
-			return response.body;
-		},
-		onSuccess: (body) => {
-			if (!body) return;
-			waitForGoogleDriveConnection().catch((error) => {
-				console.error("Failed to wait for Google Drive connection:", error);
-			});
-		},
-	}));
+	const handleTestConnection = async () => {
+		setIsTesting(true);
+		try {
+			const res = await fetchDirectGoogleDriveQuota();
+			if (res) {
+				await commands.globalMessageDialog(
+					res.email
+						? `Direct Google Drive connection is working for ${res.email}`
+						: "Direct Google Drive connection is working",
+				);
+				await refetchQuota();
+			} else {
+				await commands.globalMessageDialog(
+					"Could not reach Google Drive. Please verify your internet connection or reconnect.",
+				);
+			}
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err);
+			await commands.globalMessageDialog(`Test failed: ${message}`);
+		} finally {
+			setIsTesting(false);
+		}
+	};
 
-	const testConnection = useMutation(() => ({
-		mutationFn: async () => {
-			const response = await apiClient.desktop.testGoogleDriveStorage({
-				body: {},
-				headers: await protectedHeaders(),
-			});
+	const handleDisconnect = async () => {
+		await disconnectDirectGoogleDrive();
+		await driveStoreQuery.refetch();
+		await commands.globalMessageDialog("Google Drive disconnected.");
+	};
 
-			if (response.status !== 200)
-				throw new Error("Google Drive connection test failed");
-
-			return response.body;
-		},
-		onSuccess: async (body) => {
-			await commands.globalMessageDialog(
-				body.email
-					? `Google Drive connection is working for ${body.email}`
-					: "Google Drive connection is working",
-			);
-		},
-	}));
-
-	const setActive = useMutation(() => ({
-		mutationFn: async (provider: "s3" | "googleDrive") => {
-			const response = await apiClient.desktop.setActiveStorageProvider({
-				body: { provider },
-				headers: await protectedHeaders(),
-			});
-
-			if (response.status !== 200)
-				throw new Error("Failed to update active storage provider");
-
-			return response.body;
-		},
-		onSuccess: async () => {
-			await refetch();
-		},
-	}));
-
-	const disconnect = useMutation(() => ({
-		mutationFn: async () => {
-			const response = await apiClient.desktop.disconnectGoogleDriveStorage({
-				headers: await protectedHeaders(),
-			});
-
-			if (response.status !== 200)
-				throw new Error("Failed to disconnect Google Drive");
-
-			return response.body;
-		},
-		onSuccess: async () => {
-			await refetch();
-			await commands.globalMessageDialog("Google Drive disconnected");
-		},
-	}));
-
-	const busy = () =>
-		storage.loading ||
-		s3Config.loading ||
-		!!managedByOrganization() ||
-		isRefreshing() ||
-		connect.isPending ||
-		isWaitingForConnection() ||
-		testConnection.isPending ||
-		setActive.isPending ||
-		disconnect.isPending;
+	const busy = () => isAuthorizing() || isTesting() || isQuotaLoading();
 
 	return (
 		<div class="cap-settings-page flex flex-col h-full custom-scroll">
 			<SettingsPageContent>
 				<IntegrationConfigHeader title="Google Drive" />
 				<Section
-					title="Connection"
-					description="Google Drive stores new uploads in a private Cap folder in your Drive. Existing Cap-hosted and S3 videos keep using their current storage."
+					title="Direct Google Drive"
+					description="Connect your Google Drive directly to store exported recordings in a private 'Cap' folder in your Drive. Uploads go straight to Google Drive without passing through any Cap servers."
 				>
 					<SectionCard padded class="custom-scroll">
 						<Suspense
 							fallback={
-								<div class="flex justify-center items-center w-full h-screen">
-									<IconCapLogo class="animate-spin size-16" />
+								<div class="flex justify-center items-center py-10">
+									<div class="animate-spin size-8 border-2 border-gray-12 border-t-transparent rounded-full" />
 								</div>
 							}
 						>
 							<div class="space-y-4 animate-in fade-in">
-								<Show when={managedByOrganization()}>
-									{(organization) => (
-										<p class="text-xs leading-relaxed text-gray-10">
-											Managed by your organization: {organization().name}
-										</p>
-									)}
-								</Show>
+								<Show
+									when={isConnected()}
+									fallback={
+										<div class="space-y-4">
+											<div class="p-3.5 bg-gray-2 border border-gray-4 rounded-xl text-xs space-y-2 text-gray-11">
+												<p class="font-medium text-gray-12">
+													How to configure Google Drive directly:
+												</p>
+												<ol class="list-decimal list-inside space-y-1 pl-1">
+													<li>
+														Go to the{" "}
+														<button
+															type="button"
+															class="text-blue-10 underline"
+															onClick={() =>
+																commands.openExternalLink(
+																	"https://console.cloud.google.com/apis/credentials",
+																)
+															}
+														>
+															Google Cloud Console
+														</button>
+													</li>
+													<li>
+														Enable the "Google Drive API" for your project
+													</li>
+													<li>
+														Configure OAuth consent screen (External, add scope:
+														Drive File)
+													</li>
+													<li>
+														Create OAuth Client ID &rarr; Application type:
+														"Desktop app"
+													</li>
+													<li>Copy your Client ID and Client Secret below</li>
+												</ol>
+											</div>
 
-								<div class="space-y-3">
-									<div class="flex justify-between items-start gap-4">
-										<div class="flex flex-col gap-0.5 min-w-0">
-											<p class="text-[13px] text-gray-12">
-												{isConnected()
-													? googleDrive()?.displayName
-													: "Google Drive"}
-											</p>
-											<p class="text-xs leading-snug text-gray-10">
-												{isConnected()
-													? isActive()
-														? "Active for new uploads"
-														: "Connected but not active"
-													: "Not connected"}
-											</p>
+											<div class="space-y-3">
+												<div class="space-y-1.5">
+													<label class="text-[13px] text-gray-12 font-medium">
+														Client ID
+													</label>
+													<Input
+														value={clientId()}
+														onInput={(e) => setClientId(e.currentTarget.value)}
+														placeholder="xxxx.apps.googleusercontent.com"
+														disabled={busy()}
+														autocapitalize="off"
+														autocorrect="off"
+														spellcheck={false}
+													/>
+												</div>
+
+												<div class="space-y-1.5">
+													<label class="text-[13px] text-gray-12 font-medium">
+														Client Secret
+													</label>
+													<Input
+														type="password"
+														value={clientSecret()}
+														onInput={(e) =>
+															setClientSecret(e.currentTarget.value)
+														}
+														placeholder="GOCSPX-xxxx"
+														disabled={busy()}
+														autocapitalize="off"
+														autocorrect="off"
+														spellcheck={false}
+													/>
+												</div>
+											</div>
+
+											<div class="flex items-center gap-3 pt-2">
+												<Show
+													when={isAuthorizing()}
+													fallback={
+														<Button
+															variant="primary"
+															disabled={busy()}
+															onClick={handleConnect}
+														>
+															Connect Google Drive
+														</Button>
+													}
+												>
+													<Button
+														variant="destructive"
+														onClick={handleCancelAuth}
+													>
+														Cancel Authorization
+													</Button>
+													<span class="text-xs text-gray-10 animate-pulse">
+														Waiting for Google authorization in browser...
+													</span>
+												</Show>
+											</div>
 										</div>
-										<Button
-											variant="gray"
-											disabled={busy()}
-											onClick={() => refetch()}
-										>
-											{isRefreshing() ? "Refreshing..." : "Refresh"}
-										</Button>
-									</div>
-
-									<Show
-										when={isConnected()}
-										fallback={
+									}
+								>
+									<div class="space-y-4">
+										<div class="flex justify-between items-start gap-4">
+											<div class="flex flex-col gap-0.5 min-w-0">
+												<p class="text-[13px] text-gray-12 font-medium">
+													{quota()?.email ?? config().email ?? "Google Drive"}
+												</p>
+												<p class="text-xs leading-snug text-gray-10">
+													{isActive()
+														? "Active for new uploads"
+														: "Connected (Inactive)"}
+												</p>
+											</div>
 											<Button
-												variant="primary"
+												variant="gray"
 												disabled={busy()}
-												onClick={() => connect.mutate()}
+												onClick={() => refetchQuota()}
 											>
-												{isWaitingForConnection()
-													? "Waiting..."
-													: connect.isPending
-														? "Opening..."
-														: "Connect Google Drive"}
+												{isQuotaLoading() ? "Refreshing..." : "Refresh"}
 											</Button>
-										}
-									>
-										<Show when={storageQuota()}>
+										</div>
+
+										<Show when={quota()}>
 											<div class="pt-3 space-y-2 border-t border-gray-3">
 												<div class="flex justify-between items-start gap-4">
 													<div class="flex flex-col gap-0.5 min-w-0">
-														<p class="text-[13px] text-gray-12">Storage</p>
+														<p class="text-[13px] text-gray-12">
+															Storage Quota
+														</p>
 														<Show when={quotaUsageLabel()}>
 															{(label) => (
 																<p class="text-xs leading-snug text-gray-10">
@@ -347,13 +331,6 @@ export default function GoogleDriveConfigPage() {
 															)}
 														</Show>
 													</div>
-													<Show when={quotaTimestampLabel()}>
-														{(label) => (
-															<p class="text-[12px] text-gray-9 text-right">
-																{label()}
-															</p>
-														)}
-													</Show>
 												</div>
 												<Show when={quotaUsagePercent() !== null}>
 													<div class="overflow-hidden h-1.5 rounded-full bg-gray-4">
@@ -365,80 +342,44 @@ export default function GoogleDriveConfigPage() {
 														/>
 													</div>
 												</Show>
-												<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px]">
-													<Show when={formatBytes(storageQuota()?.remaining)}>
-														{(remaining) => (
-															<>
-																<p class="text-gray-10">Remaining</p>
-																<p class="text-right text-gray-11">
-																	{remaining()}
-																</p>
-															</>
-														)}
-													</Show>
-													<Show
-														when={formatBytes(storageQuota()?.usageInDrive)}
-													>
-														{(usageInDrive) => (
-															<>
-																<p class="text-gray-10">Drive files</p>
-																<p class="text-right text-gray-11">
-																	{usageInDrive()}
-																</p>
-															</>
-														)}
-													</Show>
-													<Show
-														when={formatBytes(
-															storageQuota()?.usageInDriveTrash,
-														)}
-													>
-														{(usageInDriveTrash) => (
-															<>
-																<p class="text-gray-10">Trash</p>
-																<p class="text-right text-gray-11">
-																	{usageInDriveTrash()}
-																</p>
-															</>
-														)}
-													</Show>
-												</div>
+												<Show when={remainingBytes()}>
+													{(rem) => (
+														<div class="flex justify-between text-[12px] text-gray-10 pt-1">
+															<span>Remaining space</span>
+															<span class="text-gray-12">{rem()}</span>
+														</div>
+													)}
+												</Show>
 											</div>
 										</Show>
-										<div class="flex flex-wrap gap-2">
+
+										<div class="flex flex-wrap gap-2 pt-2">
 											<Button
-												variant="primary"
-												disabled={busy() || isActive()}
-												onClick={() => setActive.mutate("googleDrive")}
+												variant={isActive() ? "gray" : "primary"}
+												disabled={busy()}
+												onClick={handleToggleActive}
 											>
-												{isActive() ? "Active" : "Use Google Drive"}
+												{isActive()
+													? "Deactivate Google Drive"
+													: "Use Google Drive"}
 											</Button>
-											<Show when={hasS3Config()}>
-												<Button
-													variant="gray"
-													disabled={busy() || !isActive()}
-													onClick={() => setActive.mutate("s3")}
-												>
-													Use S3
-												</Button>
-											</Show>
 											<Button
 												variant="gray"
 												disabled={busy()}
-												onClick={() => testConnection.mutate()}
+												onClick={handleTestConnection}
 											>
-												{testConnection.isPending ? "Testing..." : "Test"}
+												{isTesting() ? "Testing..." : "Test"}
 											</Button>
 											<Button
 												variant="destructive"
 												disabled={busy()}
-												onClick={() => disconnect.mutate()}
+												onClick={handleDisconnect}
 											>
 												Disconnect
 											</Button>
 										</div>
-									</Show>
-								</div>
+									</div>
+								</Show>
 							</div>
 						</Suspense>
 					</SectionCard>

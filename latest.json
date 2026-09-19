@@ -1,0 +1,11 @@
+{
+	"version": "v0.6.0",
+	"notes": "Cap v0.6.0 (NoLimits Full Edition)",
+	"pub_date": "2026-09-19T08:04:15Z",
+	"platforms": {
+		"darwin-aarch64": {
+			"signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNVV1NlBRVVA3WlU2L0hOY0JkaHFsd3cxOW5hMEovSU1Wb2Qva3Q2S1RYTzljT1dTdllOcldxeVdaVVM2VHpSVlowYUNQaVJpMzBsY1k0Rk5hRGVxZlhmNzlPUStDNHdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5ODA1MDU0CWZpbGU6Q2FwLmFwcC50YXIuZ3oKTWx6UUh1UURuNjlRZHUyMjhmTkdnN1B2eStOb2dtaTM1Z2QxSDhtTEFtUStHbUlVb01Uc1BGcW9wRXMxWEltQnNFY283TDNQZHIwREdJcFh3SkVNQXc9PQo=",
+			"url": "https://github.com/PrajjwalDatir/Cap-noLimits/releases/download/v0.6.0-nolimits-full/Cap.app.tar.gz"
+		}
+	}
+}

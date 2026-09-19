@@ -121,9 +121,32 @@ export const animatedGradientsStore = {
 		animatedGradientDefaults,
 	),
 };
-export const authStore = declareStore<AuthStore>("auth");
+export const authDefaults: AuthStore = {
+	secret: { api_key: "local_mock_key" },
+	user_id: "local_user",
+	plan: {
+		upgraded: true,
+		manual: true,
+		last_checked: Math.floor(Date.now() / 1000),
+	},
+	organizations: [],
+	organizations_updated_at: null,
+};
+export const authStore = declareStore<AuthStore>("auth", authDefaults);
 export const automationsStore = declareStore<AutomationsStore>("automations");
-export const userProfileStore = declareStore<UserProfileStore>("user_profile");
+export const userProfileDefaults: UserProfileStore = {
+	userId: "local_user",
+	profile: {
+		name: "Local User",
+		email: "local@cap.offline",
+		imageUrl: null,
+	},
+	updatedAt: Math.floor(Date.now() / 1000),
+};
+export const userProfileStore = declareStore<UserProfileStore>(
+	"user_profile",
+	userProfileDefaults,
+);
 export const hotkeysStore = declareStore<HotkeysStore>("hotkeys");
 export const generalSettingsStore =
 	declareStore<GeneralSettingsStore>("general_settings");
@@ -148,4 +171,33 @@ export const recordingSettingsStore = declareStore<RecordingSettingsStore>(
 export const teleprompterStore = declareStore<TeleprompterStore>(
 	"teleprompter",
 	teleprompterDefaults,
+);
+
+export type LocalGoogleDriveConfig = {
+	clientId: string;
+	clientSecret: string;
+	refreshToken: string | null;
+	accessToken: string | null;
+	expiresAt: number | null;
+	email: string | null;
+	folderId: string | null;
+	connected: boolean;
+	active: boolean;
+};
+
+export const defaultLocalGoogleDriveConfig: LocalGoogleDriveConfig = {
+	clientId: "",
+	clientSecret: "",
+	refreshToken: null,
+	accessToken: null,
+	expiresAt: null,
+	email: null,
+	folderId: null,
+	connected: false,
+	active: false,
+};
+
+export const googleDriveConfigStore = declareStore<LocalGoogleDriveConfig>(
+	"local_google_drive",
+	defaultLocalGoogleDriveConfig,
 );

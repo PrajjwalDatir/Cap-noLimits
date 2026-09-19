@@ -17,6 +17,7 @@ mod clip_thumbnails;
 mod crash_sentinel;
 mod deeplink_actions;
 mod diagnostics;
+mod direct_google_drive;
 mod editor_preparing;
 mod editor_recording;
 mod editor_window;
@@ -5139,7 +5140,7 @@ async fn list_system_fonts() -> Vec<String> {
 
 #[derive(Serialize, Type, Debug, Clone)]
 pub struct UploadProgress {
-    progress: f64,
+    pub progress: f64,
 }
 
 #[derive(Debug, Deserialize, Type)]
@@ -7111,10 +7112,14 @@ pub async fn run(recording_logging_handle: LoggingHandle, logs_dir: PathBuf) {
         )
         .invoke_handler({
             let public_commands = specta_builder.invoke_handler();
-            let recovery_commands: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![recovery::get_recording_recovery_success];
+            let custom_commands: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                recovery::get_recording_recovery_success,
+                direct_google_drive::upload_file_to_google_drive,
+            ];
             move |invoke| {
-                if invoke.message.command() == "get_recording_recovery_success" {
-                    recovery_commands(invoke)
+                let cmd = invoke.message.command();
+                if cmd == "get_recording_recovery_success" || cmd == "upload_file_to_google_drive" {
+                    custom_commands(invoke)
                 } else {
                     public_commands(invoke)
                 }

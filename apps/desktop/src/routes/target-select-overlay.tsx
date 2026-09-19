@@ -10,7 +10,6 @@ import {
 	type PhysicalPosition,
 	type PhysicalSize,
 } from "@tauri-apps/api/dpi";
-import { emit } from "@tauri-apps/api/event";
 import {
 	CheckMenuItem,
 	Menu,
@@ -58,11 +57,7 @@ import {
 } from "~/components/Cropper";
 import ModeSelect from "~/components/ModeSelect";
 import SelectionHint from "~/components/selection-hint";
-import {
-	authStore,
-	generalSettingsStore,
-	recordingStartSafetyStore,
-} from "~/store";
+import { generalSettingsStore, recordingStartSafetyStore } from "~/store";
 import {
 	AREA_SELECTION_STORAGE_KEY,
 	AREA_SELECTION_STORAGE_SYNC,
@@ -1872,7 +1867,6 @@ function RecordingControls(props: {
 	onRecordingStart?: () => void;
 	onClose?: () => void;
 }) {
-	const auth = authStore.createQuery();
 	const { setOptions, rawOptions } = useRecordingOptions();
 
 	const generalSetings = generalSettingsStore.createQuery();
@@ -1988,10 +1982,6 @@ function RecordingControls(props: {
 
 	const startRecording = async (confirmedWithoutMicrophone = false) => {
 		if (confirmingWithoutMicrophone() && !confirmedWithoutMicrophone) return;
-		if (rawOptions.mode === "instant" && !auth.data) {
-			emit("start-sign-in");
-			return;
-		}
 		if (startDisabled()) return;
 
 		if (
@@ -2257,7 +2247,6 @@ function RecordingControls(props: {
 							gutter={8}
 						>
 							<Popover.Anchor
-								data-inactive={rawOptions.mode === "instant" && !auth.data}
 								data-disabled={startDisabled()}
 								class="flex flex-1 min-w-0 max-w-[18rem] overflow-hidden flex-row h-11 rounded-full text-white bg-linear-to-r from-blue-10 via-blue-10 to-blue-11 dark:from-blue-9 dark:via-blue-9 dark:to-blue-10 group"
 								onClick={() => void startRecording()}
@@ -2283,8 +2272,6 @@ function RecordingControls(props: {
 									<div class="flex flex-col mr-2 ml-3 min-w-0">
 										<span class="text-[0.95rem] font-medium text-white text-nowrap">
 											{(() => {
-												if (rawOptions.mode === "instant" && !auth.data)
-													return "Sign In To Use";
 												if (rawOptions.mode === "screenshot")
 													return "Take Screenshot";
 												return "Start Recording";
